@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<title>云端翱翔 · 模拟飞行</title>
+<link rel="stylesheet" href="style.css">
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
+</head><body>
+<canvas id="c"></canvas>
+<div id="rotate"><div class="phone">📱</div><p>请将手机横屏以获得最佳体验</p></div>
+<div id="start"><h1>云端翱翔</h1><p>Three.js 模拟飞行</p><button id="startBtn">点击开始飞行</button>
+<p class="tip">左摇杆：俯仰/横滚 · 右侧滑杆：油门 · 按钮：方向舵/襟翼/起落架/刹车/视角</p></div>
+<div id="hud">
+ <div id="topbar">
+  <button id="btnFull" title="全屏">⛶</button><button id="btnMute">🔊</button><button id="btnPause">⏸</button>
+  <button id="btnReset">↺</button><button id="btnCam">🎥 追尾</button><button id="btnTilt">📐 重力感应:关</button><button id="btnQ">画质:中</button>
+ </div>
+ <canvas id="compass" width="300" height="40"></canvas>
+ <div id="leftInfo"><div class="tape"><span>空速</span><b id="spd">0</b><i>km/h</i></div><div class="tape"><span>高度</span><b id="alt">0</b><i>m</i></div><div class="tape"><span>升降</span><b id="vs">0</b><i>m/s</i></div></div>
+ <canvas id="adi" width="140" height="140"></canvas>
+ <canvas id="mini" width="140" height="140"></canvas>
+ <div id="status"><span id="stFlap">襟翼 0°</span><span id="stGear">起落架 放下</span><span id="stBrake"></span><span id="stThr">油门 0%</span></div>
+ <div id="warn"></div>
+ <div id="joy"><div id="knob"></div></div>
+ <div id="thrWrap"><div id="thrFill"></div><div id="thrKnob"></div><span>油门</span></div>
+ <div id="btns">
+  <button id="bRudL">◀ 舵</button><button id="bRudR">舵 ▶</button>
+  <button id="bFlap">襟翼</button><button id="bGear">起落架</button><button id="bBrake">刹车</button>
+ </div>
+ <div id="pauseOv">已暂停<br><small>点击 ▶ 继续</small></div>
+ <div id="crashOv"><h2>💥 坠毁！</h2><button id="btnRestart">重新起飞</button></div>
+</div>
+<script type="module" src="js/main.js"></script>
+</body></html>
