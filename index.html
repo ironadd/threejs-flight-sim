@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><title>模拟飞行</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#000;touch-action:none;user-select:none;-webkit-user-select:none;font-family:sans-serif;overscroll-behavior:none}
+canvas{display:block}
+#hud{position:fixed;top:env(safe-area-inset-top,0);left:0;right:0;display:flex;justify-content:center;gap:10px;flex-wrap:wrap;padding:6px;color:#fff;font-size:14px;text-shadow:0 1px 2px #000;pointer-events:none}
+#hud div{background:rgba(0,0,0,.35);padding:4px 8px;border-radius:6px}
+#warn{position:fixed;top:22%;width:100%;text-align:center;color:#ff4040;font-size:26px;font-weight:bold;pointer-events:none;text-shadow:0 0 4px #000}
+#joy{position:fixed;left:20px;bottom:24px;width:140px;height:140px;border-radius:50%;background:rgba(255,255,255,.15);border:2px solid rgba(255,255,255,.4)}
+#knob{position:absolute;left:45px;top:45px;width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.6)}
+#thr{position:fixed;right:24px;bottom:24px;width:60px;height:170px;border-radius:12px;background:rgba(255,255,255,.15);border:2px solid rgba(255,255,255,.4)}
+#thrFill{position:absolute;bottom:0;left:0;right:0;background:rgba(255,170,0,.6);border-radius:10px}
+#thrLbl{position:absolute;top:-22px;width:100%;text-align:center;color:#fff;font-size:13px}
+.btn{position:fixed;top:48px;padding:6px 10px;background:rgba(0,0,0,.45);color:#fff;border:1px solid #fff8;border-radius:8px;font-size:13px}
+#overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.55);color:#fff;text-align:center;padding:20px}
+#overlay h1{margin:0 0 10px}#overlay p{max-width:420px;line-height:1.6;font-size:14px}
+#overlay button{font-size:20px;padding:10px 30px;border-radius:10px;border:0;background:#ffa500;color:#000;margin-top:10px}
+</style>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
+</head><body>
+<div id="hud"><div id="hSpd">速度 0</div><div id="hAlt">高度 0</div><div id="hHdg">航向 0°</div><div id="hThr">油门 0%</div><div id="hScore">得分 0</div></div>
+<div id="warn"></div>
+<div id="joy"><div id="knob"></div></div>
+<div id="thr"><div id="thrLbl">油门</div><div id="thrFill"></div></div>
+<button class="btn" id="tiltBtn" style="left:10px">重力感应：关</button>
+<button class="btn" id="resetBtn" style="right:10px">重新开始</button>
+<div id="overlay"><h1>✈️ 模拟飞行</h1><p id="msg">左侧摇杆：俯仰/横滚　右侧滑条：油门<br>推满油门在跑道上加速，速度超过 110 km/h 后轻拉摇杆起飞。<br>穿过金色圆环得分，小心失速和撞地！<br>键盘：W/S 俯仰 A/D 横滚 Q/E 偏航 Shift/Ctrl 油门</p><button id="startBtn">开始飞行</button></div>
+<script type="module">
+let THREE;
+try{THREE=await import('./three.module.js');}catch(e){THREE=await import('three');}
+const $=id=>document.getElementById(id);
+const renderer=new THREE.WebGLRenderer({antialias:false,powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.setSize(innerWidth,innerHeight);
+document.body.prepend(renderer.domElement);
+const scene=new THREE.Scene();const SKY=0x87c5ff;scene.background=new THREE.Color(SKY);scene.fog=new THREE.Fog(SKY,300,1800);
+const camera=new THREE.PerspectiveCamera(65,innerWidth/innerHeight,0.5,2500);
+scene.add(new THREE.HemisphereLight(0xcfe8ff,0x557744,0.9));
+const sun=new THREE.DirectionalLight(0xffffff,1.2);sun.position.set(300,500,200);scene.add(sun);
+// terrain
+function h(x,z){
+  if(Math.abs(x)<40&&z>-700&&z<100)return 2; // runway flat
+  let y=Math.sin(x*0.004)*Math.cos(z*0.005)*60+Math.sin(x*0.013+1)*Math.sin(z*0.011)*25+Math.sin(x*0.03)*Math.cos(z*0.027)*6;
+  const d=Math.max(0,1-Math.hypot(x,(z+300))/600);y=y*(1-d)+2*d+ (y>0?0:0);
+  return y;
+}
+const SIZE=4000,SEG=160;const tg=new THREE.PlaneGeometry(SIZE,SIZE,SEG,SEG);tg.rotateX(-Math.PI/2);
+const pos=tg.attributes.position,cols=[];const c=new THREE.Color();
+for(let i=0;i<pos.count;i++){const x=pos.getX(i),z=pos.getZ(i),y=h(x,z);pos.setY(i,y);
+ if(y<0)c.set(0xc2b280);else if(y<30)c.set(0x4c9a3a);else if(y<55)c.set(0x3a7a2e);else c.set(0x8a8a7a);
+ if(y>70)c.set(0xffffff);cols.push(c.r,c.g,c.b);}
+tg.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));tg.computeVertexNormals();
+scene.add(new THREE.Mesh(tg,new THREE.MeshLambertMaterial({vertexColors:true,flatShading:true})));
+const water=new THREE.Mesh(new THREE.PlaneGeometry(SIZE,SIZE),new THREE.MeshLambertMaterial({color:0x2a6fbf,transparent:true,opacity:.85}));
+water.rotation.x=-Math.PI/2;water.position.y=-1;scene.add(water);
+const rw=new THREE.Mesh(new THREE.PlaneGeometry(30,760),new THREE.MeshLambertMaterial({color:0x333333}));
+rw.rotation.x=-Math.PI/2;rw.position.set(0,2.05,-300);scene.add(rw);
+for(let z=60;z>-660;z-=40){const m=new THREE.Mesh(new THREE.PlaneGeometry(1.2,18),new THREE.MeshBasicMaterial({color:0xffffff}));m.rotation.x=-Math.PI/2;m.position.set(0,2.1,z);scene.add(m);}
+// trees & buildings (instanced)
+const rnd=(s=>()=>(s=(s*16807)%2147483647)/2147483647)(42);
+const N=1500;const trunkG=new THREE.ConeGeometry(4,12,6);trunkG.translate(0,6,0);
+const trees=new THREE.InstancedMesh(trunkG,new THREE.MeshLambertMaterial({color:0x2d6b2d,flatShading:true}),N);
+const bG=new THREE.BoxGeometry(1,1,1);bG.translate(0,.5,0);const NB=250;
+const blds=new THREE.InstancedMesh(bG,new THREE.MeshLambertMaterial({color:0xd8d0c0}),NB);
+const M=new THREE.Matrix4(),obst=[];let ti=0,bi=0;
+while(ti<N||bi<NB){const x=(rnd()-.5)*SIZE*.9,z=(rnd()-.5)*SIZE*.9,y=h(x,z);
+ if(y<1||(Math.abs(x)<70&&z>-750&&z<150))continue;
+ if(bi<NB&&Math.hypot(x-400,z+200)<350){const w=10+rnd()*15,ht=10+rnd()*50;M.makeScale(w,ht,w);M.setPosition(x,y,z);blds.setMatrixAt(bi++,M);obst.push({x,z,r:w*.6,top:y+ht});}
+ else if(ti<N&&y<60){const s=.7+rnd()*.8;M.makeScale(s,s,s);M.setPosition(x,y,z);trees.setMatrixAt(ti++,M);obst.push({x,z,r:3*s,top:y+12*s});}}
+scene.add(trees,blds);
+// rings
+const rings=[];const ringG=new THREE.TorusGeometry(14,1.5,8,24);
+function makeRings(){rings.forEach(r=>scene.remove(r.m));rings.length=0;
+ for(let i=0;i<20;i++){const a=i*.6,R=500+i*40;const x=Math.sin(a)*R,z=-900+Math.cos(a)*R-i*20;const y=Math.max(h(x,z),0)+50+rnd()*60;
+  const m=new THREE.Mesh(ringG,new THREE.MeshBasicMaterial({color:0xffd700}));m.position.set(x,y,z);m.rotation.y=a;scene.add(m);rings.push({m,hit:false});}}
+// plane
+const plane=new THREE.Group();const mat=(c)=>new THREE.MeshLambertMaterial({color:c,flatShading:true});
+const add=(g,m,x,y,z)=>{const o=new THREE.Mesh(g,m);o.position.set(x,y,z);plane.add(o);return o;};
+const body=add(new THREE.CylinderGeometry(.9,.6,8,8),mat(0xeeeeee),0,0,0);body.rotation.x=Math.PI/2;
+const nose=add(new THREE.ConeGeometry(.9,1.6,8),mat(0xcc2222),0,0,-4.8);nose.rotation.x=-Math.PI/2;
+add(new THREE.BoxGeometry(11,.2,1.8),mat(0xcc2222),0,.2,-.5);
+add(new THREE.BoxGeometry(4,.15,1),mat(0xcc2222),0,.2,3.6);
+add(new THREE.BoxGeometry(.15,1.8,1.2),mat(0xcc2222),0,1,3.6);
+add(new THREE.BoxGeometry(1,.6,1.5),new THREE.MeshLambertMaterial({color:0x3399ff}),0,.8,-1.5);
+const prop=add(new THREE.BoxGeometry(3,.2,.1),mat(0x222222),0,0,-5.7);
+add(new THREE.CylinderGeometry(.3,.3,.3,8),mat(0x222222),-1.2,-1.2,-1).rotation.z=Math.PI/2;
+add(new THREE.CylinderGeometry(.3,.3,.3,8),mat(0x222222),1.2,-1.2,-1).rotation.z=Math.PI/2;
+scene.add(plane);
+// state
+const S={v:new THREE.Vector3(),speed:0,thr:0,alive:true,score:0,started:false,ground:true};
+const GEAR=1.5;
+function reset(){plane.position.set(0,2+GEAR,40);plane.quaternion.identity();S.speed=0;S.thr=0;S.alive=true;S.score=0;S.ground=true;S.v.set(0,0,0);makeRings();setThr(0);$('warn').textContent='';}
+// input
+const inp={p:0,r:0,y:0};let tilt=false,tiltP=0,tiltR=0;const keys={};
+addEventListener('keydown',e=>keys[e.code]=true);addEventListener('keyup',e=>keys[e.code]=false);
+const joy=$('joy'),knob=$('knob');let joyId=null;
+function joyMove(t){const r=joy.getBoundingClientRect();let dx=t.clientX-r.left-70,dy=t.clientY-r.top-70;const l=Math.hypot(dx,dy);if(l>50){dx*=50/l;dy*=50/l;}knob.style.left=45+dx+'px';knob.style.top=45+dy+'px';inp.r=dx/50;inp.p=dy/50;}
+joy.addEventListener('touchstart',e=>{e.preventDefault();const t=e.changedTouches[0];joyId=t.identifier;joyMove(t);},{passive:false});
+const thrEl=$('thr');let thrId=null;
+function setThr(v){S.thr=Math.min(1,Math.max(0,v));$('thrFill').style.height=S.thr*100+'%';}
+function thrMove(t){const r=thrEl.getBoundingClientRect();setThr(1-(t.clientY-r.top)/r.height);}
+thrEl.addEventListener('touchstart',e=>{e.preventDefault();const t=e.changedTouches[0];thrId=t.identifier;thrMove(t);},{passive:false});
+document.addEventListener('touchmove',e=>{e.preventDefault();for(const t of e.changedTouches){if(t.identifier===joyId)joyMove(t);if(t.identifier===thrId)thrMove(t);}},{passive:false});
+const end=e=>{for(const t of e.changedTouches){if(t.identifier===joyId){joyId=null;inp.p=inp.r=0;knob.style.left=knob.style.top='45px';}if(t.identifier===thrId)thrId=null;}};
+document.addEventListener('touchend',end);document.addEventListener('touchcancel',end);
+document.addEventListener('gesturestart',e=>e.preventDefault());
+// mouse fallback for joystick/throttle
+let md=null;joy.onmousedown=e=>{md='j';joyMove(e)};thrEl.onmousedown=e=>{md='t';thrMove(e)};
+addEventListener('mousemove',e=>{if(md==='j')joyMove(e);if(md==='t')thrMove(e);});
+addEventListener('mouseup',()=>{if(md==='j'){inp.p=inp.r=0;knob.style.left=knob.style.top='45px';}md=null;});
+$('tiltBtn').onclick=async()=>{if(!tilt&&typeof DeviceOrientationEvent!=='undefined'&&DeviceOrientationEvent.requestPermission){try{if(await DeviceOrientationEvent.requestPermission()!=='granted')return;}catch(e){return;}}
+ tilt=!tilt;$('tiltBtn').textContent='重力感应：'+(tilt?'开':'关');};
+addEventListener('deviceorientation',e=>{const land=Math.abs(window.orientation||screen.orientation?.angle||0)===90;
+ const b=e.beta||0,g=e.gamma||0;if(land){tiltR=Math.max(-1,Math.min(1,b/30))*(((screen.orientation?.angle??window.orientation)===-90||(screen.orientation?.angle===270))?-1:1);tiltP=Math.max(-1,Math.min(1,(-g-45)/30));}else{tiltR=Math.max(-1,Math.min(1,g/30));tiltP=Math.max(-1,Math.min(1,(b-45)/30));}});
+$('resetBtn').onclick=()=>{reset();$('overlay').style.display='none';};
+$('startBtn').onclick=()=>{S.started=true;reset();$('overlay').style.display='none';};
+function crash(why){S.alive=false;$('msg').innerHTML='💥 '+why+'<br>得分：'+S.score;$('startBtn').textContent='再飞一次';$('overlay').querySelector('h1').textContent='坠毁！';$('overlay').style.display='flex';}
+// physics
+const fwd=new THREE.Vector3(),up=new THREE.Vector3(),q=new THREE.Quaternion(),ax=new THREE.Vector3();
+const STALL=45,MAXS=220;
+function step(dt){
+ if(keys.ShiftLeft||keys.ShiftRight)setThr(S.thr+dt*.5);if(keys.ControlLeft||keys.ControlRight)setThr(S.thr-dt*.5);
+ let p=inp.p,r=inp.r,y=0;if(tilt&&joyId===null){p=tiltP;r=tiltR;}
+ if(keys.KeyW||keys.ArrowUp)p=1;if(keys.KeyS||keys.ArrowDown)p=-1;if(keys.KeyA||keys.ArrowLeft)r=-1;if(keys.KeyD||keys.ArrowRight)r=1;if(keys.KeyQ)y=1;if(keys.KeyE)y=-1;
+ // joystick down(+p) = pull up (nose up)
+ const auth=Math.min(1,S.speed/80);
+ fwd.set(0,0,-1).applyQuaternion(plane.quaternion);up.set(0,1,0).applyQuaternion(plane.quaternion);
+ // thrust/drag/gravity along path
+ S.speed+=(S.thr*45-0.0009*S.speed*S.speed-(S.ground?2*Math.sign(S.speed):0))*dt - fwd.y*9.8*dt;
+ S.speed=Math.max(0,Math.min(MAXS,S.speed));
+ const stall=S.speed<STALL&&!S.ground;
+ if(S.ground){
+  const pitchIn=S.speed>60?p:0;
+  if(pitchIn>0){q.setFromAxisAngle(ax.set(1,0,0),pitchIn*.8*dt);plane.quaternion.multiply(q);}
+  q.setFromAxisAngle(ax.set(0,1,0),(-r*.4+y*.4)*dt*Math.min(1,S.speed/20));plane.quaternion.multiply(q);
+  const e=new THREE.Euler().setFromQuaternion(plane.quaternion,'YXZ');e.z=0;if(e.x<0)e.x=0;plane.quaternion.setFromEuler(e);
+  plane.position.addScaledVector(fwd,S.speed*dt);
+  if(e.x>0.05&&S.speed>60){S.ground=false;}else plane.position.y=h(plane.position.x,plane.position.z)+GEAR;
+ }else{
+  q.setFromAxisAngle(ax.set(1,0,0),p*1.2*auth*dt);plane.quaternion.multiply(q);
+  q.setFromAxisAngle(ax.set(0,0,1),-r*2.2*auth*dt);plane.quaternion.multiply(q);
+  q.setFromAxisAngle(ax.set(0,1,0),y*.5*auth*dt);plane.quaternion.multiply(q);
+  // bank turns: yaw toward bank
+  const bank=up.x*fwd.z-up.z*fwd.x; // approximate
+  const right=new THREE.Vector3(1,0,0).applyQuaternion(plane.quaternion);
+  q.setFromAxisAngle(ax.set(0,1,0),right.y*0.9*auth*dt);plane.quaternion.premultiply(q);
+  // velocity: forward speed + lift vs gravity sink
+  const liftF=Math.min(1.2,(S.speed/70)**2)*Math.max(0,up.y);
+  const sink=(1-liftF)*9.8*3;
+  S.vy=(S.vy||0)+(-sink-(S.vy||0))*Math.min(1,dt*1.5);
+  plane.position.addScaledVector(fwd,S.speed*dt);plane.position.y+=S.vy*dt;
+  if(stall){q.setFromAxisAngle(ax.set(1,0,0),-0.8*dt);plane.quaternion.multiply(q);}
+  // landing / collision
+  const gy=Math.max(h(plane.position.x,plane.position.z),-1);
+  if(plane.position.y-GEAR<=gy){const e=new THREE.Euler().setFromQuaternion(plane.quaternion,'YXZ');
+   const onRunway=Math.abs(plane.position.x)<20&&plane.position.z>-680&&plane.position.z<80;
+   if(onRunway&&Math.abs(e.z)<.35&&e.x>-.15&&e.x<.3&&S.vy>-8){S.ground=true;S.vy=0;plane.position.y=gy+GEAR;}
+   else return crash(gy<0?'坠入水中':'撞到地面');}
+  for(const o of obst){const dx=plane.position.x-o.x,dz=plane.position.z-o.z;if(dx*dx+dz*dz<(o.r+3)**2&&plane.position.y<o.top)return crash('撞上障碍物');}
+ }
+ if(Math.abs(plane.position.x)>SIZE/2-50||Math.abs(plane.position.z)>SIZE/2-50){crash('飞出边界');return;}
+ for(const rg of rings){if(rg.hit)continue;if(plane.position.distanceTo(rg.m.position)<14){rg.hit=true;rg.m.material.color.set(0x44ff44);S.score+=100;}}
+ rings.forEach(rg=>rg.m.rotation.z+=dt);
+ prop.rotation.z+=dt*(5+S.thr*60);
+ $('warn').textContent=stall?'⚠ 失速！':(S.speed>0&&!S.ground&&plane.position.y-Math.max(0,h(plane.position.x,plane.position.z))<30&&fwd.y<-.2?'⚠ 拉起！':'');
+}
+const camPos=new THREE.Vector3(),camOff=new THREE.Vector3(),look=new THREE.Vector3();
+function updCam(dt){camOff.set(0,4,16).applyQuaternion(plane.quaternion);const target=plane.position.clone().add(camOff);target.y=Math.max(target.y,h(target.x,target.z)+2);
+ camPos.lerp(target,Math.min(1,dt*4));camera.position.copy(camPos);look.set(0,1,-10).applyQuaternion(plane.quaternion).add(plane.position);camera.lookAt(look);}
+function hud(){const e=new THREE.Euler().setFromQuaternion(plane.quaternion,'YXZ');let hd=Math.round((-e.y*180/Math.PI+360)%360);
+ $('hSpd').textContent='速度 '+Math.round(S.speed*3.6/2)+' km/h';$('hAlt').textContent='高度 '+Math.round(plane.position.y)+' m';
+ $('hHdg').textContent='航向 '+hd+'°';$('hThr').textContent='油门 '+Math.round(S.thr*100)+'%';$('hScore').textContent='得分 '+S.score+' ('+rings.filter(r=>r.hit).length+'/'+rings.length+')';}
+reset();camPos.set(0,8,60);
+let last=performance.now();
+renderer.setAnimationLoop(()=>{const now=performance.now();const dt=Math.min(.05,(now-last)/1000);last=now;
+ if(S.started&&S.alive)step(dt);updCam(dt);hud();renderer.render(scene,camera);});
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+</script></body></html>
