@@ -1,34 +1,87 @@
 <!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="theme-color" content="#0b1424">
 <title>云端翱翔 · 模拟飞行</title>
-<link rel="stylesheet" href="style.css">
-<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
+<link rel="stylesheet" href="style.css?v=2">
+<script type="importmap">{"imports":{"three":"./three.module.js"}}</script>
 </head><body>
+<svg width="0" height="0" style="position:absolute">
+ <symbol id="i-full" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+ <symbol id="i-sound" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/></symbol>
+ <symbol id="i-mute" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M17 9l5 6M22 9l-5 6"/></symbol>
+ <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+ <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5l13 7.5-13 7.5z" fill="currentColor"/></symbol>
+ <symbol id="i-cam" viewBox="0 0 24 24"><rect x="3" y="7" width="13" height="10" rx="2"/><path d="M16 11l5-3v8l-5-3"/></symbol>
+ <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+ <symbol id="i-reset" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.5-5.8M4 4v4h4"/></symbol>
+ <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="16" r="4"/><circle cx="12" cy="16" r="1.2"/><path d="M12 12V4M8 4h8"/></symbol>
+ <symbol id="i-flap" viewBox="0 0 24 24"><path d="M2 11c5-3 11-3 15-1l-2 2c-4-1-8-1-13-1z"/><path d="M17 12l4 4"/></symbol>
+ <symbol id="i-brake" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 16.5V7.5h3.5a2.5 2.5 0 0 1 0 5H9.5"/></symbol>
+ <symbol id="i-left" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+ <symbol id="i-right" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
+ <symbol id="i-plane" viewBox="0 0 24 24"><path d="M21 15.5v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V8.5l-8 5v2l8-2.5V18l-2 1.5V21l3.5-1 3.5 1v-1.5L13 18v-5z" fill="currentColor" stroke="none"/></symbol>
+</svg>
 <canvas id="c"></canvas>
-<div id="rotate"><div class="phone">📱</div><p>请将手机横屏以获得最佳体验</p></div>
-<div id="start"><h1>云端翱翔</h1><p>Three.js 模拟飞行</p><button id="startBtn">点击开始飞行</button>
-<p class="tip">左摇杆：俯仰/横滚 · 右侧滑杆：油门 · 按钮：方向舵/襟翼/起落架/刹车/视角</p></div>
-<div id="hud">
- <div id="topbar">
-  <button id="btnFull" title="全屏">⛶</button><button id="btnMute">🔊</button><button id="btnPause">⏸</button>
-  <button id="btnReset">↺</button><button id="btnCam">🎥 追尾</button><button id="btnTilt">📐 重力感应:关</button><button id="btnQ">画质:中</button>
+<div id="rotate"><svg class="ic big"><use href="#i-plane"/></svg><p>请将手机横屏</p><small>横屏可获得完整的驾驶体验</small></div>
+
+<div id="start">
+ <div class="brand"><svg class="ic logo"><use href="#i-plane"/></svg><h1>云端翱翔</h1><p>SKY VOYAGER · 模拟飞行</p></div>
+ <div class="menu glass">
+  <button class="primary" id="playAir"><svg class="ic"><use href="#i-play"/></svg>空中出发<small>300m · 200km/h · 推荐</small></button>
+  <button class="secondary" id="playRwy">跑道起飞<small>从机场起步</small></button>
+  <div class="opts">
+   <label><input type="checkbox" id="optAssist" checked><span>飞行辅助</span></label>
+   <label><input type="checkbox" id="optInvert"><span>反转俯仰</span></label>
+   <label class="sel">画质<select id="optQ"><option value="0">低</option><option value="1">中</option><option value="2">高</option></select></label>
+  </div>
  </div>
- <canvas id="compass" width="300" height="40"></canvas>
- <div id="leftInfo"><div class="tape"><span>空速</span><b id="spd">0</b><i>km/h</i></div><div class="tape"><span>高度</span><b id="alt">0</b><i>m</i></div><div class="tape"><span>升降</span><b id="vs">0</b><i>m/s</i></div></div>
- <canvas id="adi" width="140" height="140"></canvas>
- <canvas id="mini" width="140" height="140"></canvas>
- <div id="status"><span id="stFlap">襟翼 0°</span><span id="stGear">起落架 放下</span><span id="stBrake"></span><span id="stThr">油门 0%</span></div>
- <div id="warn"></div>
- <div id="joy"><div id="knob"></div></div>
- <div id="thrWrap"><div id="thrFill"></div><div id="thrKnob"></div><span>油门</span></div>
- <div id="btns">
-  <button id="bRudL">◀ 舵</button><button id="bRudR">舵 ▶</button>
-  <button id="bFlap">襟翼</button><button id="bGear">起落架</button><button id="bBrake">刹车</button>
- </div>
- <div id="pauseOv">已暂停<br><small>点击 ▶ 继续</small></div>
- <div id="crashOv"><h2>💥 坠毁！</h2><button id="btnRestart">重新起飞</button></div>
+ <p class="hint">左手摇杆控制方向（下拉抬头）· 右手滑杆控制油门</p>
 </div>
-<script type="module" src="js/main.js"></script>
+
+<div id="hud">
+ <div id="topL" class="glass row">
+  <div class="tape"><span>空速</span><b id="spd">0</b><i>km/h</i></div>
+  <div class="tape"><span>高度</span><b id="alt">0</b><i>m</i></div>
+  <div class="tape"><span>升降</span><b id="vs">0</b><i>m/s</i></div>
+ </div>
+ <canvas id="compass" width="520" height="64"></canvas>
+ <div id="topR">
+  <canvas id="mini" width="200" height="200"></canvas>
+  <canvas id="adi" width="200" height="200"></canvas>
+  <div class="col">
+   <button class="ib" id="btnPause"><svg class="ic"><use href="#i-pause"/></svg></button>
+   <button class="ib" id="btnMenu"><svg class="ic"><use href="#i-menu"/></svg></button>
+  </div>
+ </div>
+ <div id="drawer" class="glass">
+  <button id="btnFull"><svg class="ic"><use href="#i-full"/></svg>全屏</button>
+  <button id="btnMute"><svg class="ic"><use href="#i-sound"/></svg>声音</button>
+  <button id="btnCam2"><svg class="ic"><use href="#i-cam"/></svg>视角</button>
+  <button id="btnAssist" class="on">飞行辅助</button>
+  <button id="btnInvert">反转俯仰</button>
+  <button id="btnTilt">重力感应</button>
+  <button id="btnQ">画质</button>
+  <button id="btnReset"><svg class="ic"><use href="#i-reset"/></svg>空中重置</button>
+  <button id="btnRwy">跑道重置</button>
+  <button id="btnHome">主菜单</button>
+ </div>
+ <div id="warn"></div>
+ <div id="toast"></div>
+ <div id="joy"><div class="ring"></div><div id="knob"></div><span class="lbl">方向</span></div>
+ <div id="ctrlR">
+  <div id="btns">
+   <button class="cb" id="btnCam"><svg class="ic"><use href="#i-cam"/></svg><span id="camName">追尾</span></button>
+   <button class="cb" id="bFlap"><svg class="ic"><use href="#i-flap"/></svg><span id="stFlap">襟翼 0°</span></button>
+   <button class="cb" id="bGear"><svg class="ic"><use href="#i-gear"/></svg><span id="stGear">放下</span></button>
+   <button class="cb" id="bBrake"><svg class="ic"><use href="#i-brake"/></svg><span>刹车</span></button>
+   <button class="cb" id="bRudL"><svg class="ic"><use href="#i-left"/></svg><span>左舵</span></button>
+   <button class="cb" id="bRudR"><svg class="ic"><use href="#i-right"/></svg><span>右舵</span></button>
+  </div>
+  <div id="thrWrap"><div id="thrFill"></div><div id="thrKnob"><b id="thrTxt">0%</b></div><span class="lbl">油门</span></div>
+ </div>
+ <div id="pauseOv" class="ov"><div class="glass card"><h2>已暂停</h2><button class="primary" id="btnResume"><svg class="ic"><use href="#i-play"/></svg>继续飞行</button></div></div>
+ <div id="crashOv" class="ov"><div class="glass card"><h2 id="crashTxt">坠毁</h2><button class="primary" id="btnRestart">空中重新出发</button><button class="secondary" id="btnRestartRwy">跑道起飞</button></div></div>
+</div>
+<script type="module" src="js/main.js?v=2"></script>
 </body></html>

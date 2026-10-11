@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {Sky} from 'three/addons/objects/Sky.js';
+import {Sky} from './vendor/Sky.js';
 // ---- 噪声 ----
 const P=new Uint8Array(512);{const p=[...Array(256).keys()];let s=1337;for(let i=255;i>0;i--){s=(s*16807)%2147483647;const j=s%(i+1);[p[i],p[j]]=[p[j],p[i]];}for(let i=0;i<512;i++)P[i]=p[i&255];}
 const fade=t=>t*t*t*(t*(t*6-15)+10),lerp=(a,b,t)=>a+(b-a)*t;
@@ -23,9 +23,9 @@ export function buildWorld(scene,renderer,quality){
   const out={};
   // ---- 天空 ----
   const sky=new Sky();sky.scale.setScalar(45000);scene.add(sky);
-  const u=sky.material.uniforms;u.turbidity.value=6;u.rayleigh.value=1.6;u.mieCoefficient.value=.004;u.mieDirectionalG.value=.85;
+  const u=sky.material.uniforms;u.turbidity.value=4;u.rayleigh.value=1.2;u.mieCoefficient.value=.004;u.mieDirectionalG.value=.85;
   const sun=new THREE.Vector3().setFromSphericalCoords(1,THREE.MathUtils.degToRad(68),THREE.MathUtils.degToRad(200));u.sunPosition.value.copy(sun);
-  scene.fog=new THREE.Fog(0xb9d3ea,1500,9500);
+  scene.fog=new THREE.Fog(0xc4d9ee,1800,11000);
   const pm=new THREE.PMREMGenerator(renderer);const env=pm.fromScene(sky).texture;scene.environment=env;
   const hemi=new THREE.HemisphereLight(0xcfe6ff,0x5a6b3a,.7);scene.add(hemi);
   const dl=new THREE.DirectionalLight(0xfff1dd,2.4);dl.position.copy(sun).multiplyScalar(400);dl.castShadow=quality>0;
@@ -35,7 +35,7 @@ export function buildWorld(scene,renderer,quality){
   const seg=quality>1?320:quality>0?240:160;
   const g=new THREE.PlaneGeometry(WORLD,WORLD,seg,seg);g.rotateX(-Math.PI/2);
   const pos=g.attributes.position,col=new Float32Array(pos.count*3),c=new THREE.Color();
-  const sand=new THREE.Color(0xe0cf9a),grass=new THREE.Color(0x5d8a3a),grass2=new THREE.Color(0x7a9c45),forest=new THREE.Color(0x3c5e2a),rock=new THREE.Color(0x7d736a),snow=new THREE.Color(0xf6f8fb),seabed=new THREE.Color(0x8a7f5a);
+  const sand=new THREE.Color(0xe0cf9a),grass=new THREE.Color(0x6a9a3e),grass2=new THREE.Color(0x9bb055),forest=new THREE.Color(0x355a2b),rock=new THREE.Color(0x7d736a),snow=new THREE.Color(0xf6f8fb),seabed=new THREE.Color(0x8a7f5a);
   for(let i=0;i<pos.count;i++){const x=pos.getX(i),z=pos.getZ(i),h=terrainHeight(x,z);pos.setY(i,h);
     const n=noise(x*.01,z*.01)*.5+.5;
     if(h<-2)c.copy(seabed);else if(h<6)c.copy(sand);else if(h<160)c.copy(grass).lerp(grass2,n);else if(h<380)c.copy(forest).lerp(grass,n*.5);else if(h<620)c.copy(rock).lerp(forest,n*.3);else c.copy(rock).lerp(snow,smooth(620,800,h+n*80));
@@ -43,7 +43,10 @@ export function buildWorld(scene,renderer,quality){
   g.setAttribute('color',new THREE.BufferAttribute(col,3));g.computeVertexNormals();
   // 根据坡度把陡坡染成岩石
   const nr=g.attributes.normal;for(let i=0;i<pos.count;i++){const s=1-nr.getY(i);if(s>.25&&pos.getY(i)>10){c.fromArray(col,i*3).lerp(rock,smooth(.25,.5,s));col.set([c.r,c.g,c.b],i*3);}}
-  const terrain=new THREE.Mesh(g,new THREE.MeshStandardMaterial({vertexColors:true,roughness:.95,metalness:0}));terrain.receiveShadow=true;scene.add(terrain);
+  const dc=document.createElement('canvas');dc.width=dc.height=256;{const d=dc.getContext('2d'),im=d.createImageData(256,256);
+    for(let j=0;j<256;j++)for(let i=0;i<256;i++){const v=200+(noise(i*.06,j*.06)*.5+noise(i*.25,j*.25)*.3+Math.random()*.25)*70;im.data.set([v,v,v,255],(j*256+i)*4);}d.putImageData(im,0,0);}
+  const dt=new THREE.CanvasTexture(dc);dt.wrapS=dt.wrapT=THREE.RepeatWrapping;dt.repeat.set(700,700);dt.anisotropy=4;dt.colorSpace=THREE.SRGBColorSpace;
+  const terrain=new THREE.Mesh(g,new THREE.MeshStandardMaterial({vertexColors:true,map:dt,roughness:.92,metalness:0}));terrain.receiveShadow=true;scene.add(terrain);
   // ---- 水面（动画着色器）----
   const wMat=new THREE.ShaderMaterial({fog:true,transparent:true,uniforms:THREE.UniformsUtils.merge([THREE.UniformsLib.fog,{uTime:{value:0},uSun:{value:sun},uCam:{value:new THREE.Vector3()}}]),
     vertexShader:`#include <fog_pars_vertex>
@@ -85,7 +88,7 @@ export function buildWorld(scene,renderer,quality){
   const bw=new THREE.MeshStandardMaterial({color:0xe8e4da,roughness:.8});
   const tower=new THREE.Mesh(new THREE.CylinderGeometry(3,4,26,12),bw);tower.position.set(200,RWY.elev+13,-120);tower.castShadow=true;scene.add(tower);
   const cab=new THREE.Mesh(new THREE.CylinderGeometry(6,5,5,8),new THREE.MeshStandardMaterial({color:0x335577,metalness:.6,roughness:.15}));cab.position.set(200,RWY.elev+28.5,-120);scene.add(cab);
-  for(let i=0;i<3;i++){const h=new THREE.Mesh(new THREE.CylinderGeometry(14,14,40,20,1,false,0,Math.PI),new THREE.MeshStandardMaterial({color:0x8a96a3,metalness:.5,roughness:.4}));h.rotation.z=Math.PI/2;h.rotation.y=Math.PI/2;h.position.set(230,RWY.elev,40+i*45);h.castShadow=true;scene.add(h);}
+  for(let i=0;i<3;i++){const h=new THREE.Mesh(new THREE.BoxGeometry(34,12,38),new THREE.MeshStandardMaterial({color:0x8a96a3,metalness:.5,roughness:.4}));h.position.set(235,RWY.elev+6,40+i*45);h.castShadow=h.receiveShadow=true;scene.add(h);const r=new THREE.Mesh(new THREE.CylinderGeometry(19,19,38,20,1,false,-Math.PI/2.6,Math.PI/1.3),h.material);r.rotation.x=Math.PI/2;r.rotation.y=0;r.position.set(235,RWY.elev+12-15.5,40+i*45);r.scale.set(1,1,1);const dr=new THREE.Mesh(new THREE.PlaneGeometry(26,10),new THREE.MeshStandardMaterial({color:0x2a3138}));dr.rotation.y=-Math.PI/2;dr.position.set(217.9,RWY.elev+5,40+i*45);scene.add(dr);}
   // 风向袋
   const sock=new THREE.Mesh(new THREE.ConeGeometry(1,5,12,1,true),new THREE.MeshStandardMaterial({color:0xff6600,side:THREE.DoubleSide}));sock.rotation.z=Math.PI/2;sock.position.set(-50,RWY.elev+8,-700);scene.add(sock);
   // ---- 小镇（实例化房屋）----
@@ -118,9 +121,9 @@ export function buildWorld(scene,renderer,quality){
   const cc=document.createElement('canvas');cc.width=cc.height=128;const cx2=cc.getContext('2d');
   for(let i=0;i<14;i++){const gx=30+Math.random()*68,gy=40+Math.random()*48,r=18+Math.random()*26;const gr=cx2.createRadialGradient(gx,gy,0,gx,gy,r);gr.addColorStop(0,'rgba(255,255,255,.9)');gr.addColorStop(1,'rgba(255,255,255,0)');cx2.fillStyle=gr;cx2.fillRect(0,0,128,128);}
   const ct=new THREE.CanvasTexture(cc);const clouds=new THREE.Group();
-  const cm=new THREE.SpriteMaterial({map:ct,transparent:true,depthWrite:false,fog:true,opacity:.9});
+  const cm=new THREE.SpriteMaterial({map:ct,transparent:true,depthWrite:false,fog:true,opacity:.95}),cmD=new THREE.SpriteMaterial({map:ct,transparent:true,depthWrite:false,fog:true,opacity:.8,color:0xc9d2de});
   const nC=quality>0?90:45;for(let i=0;i<nC;i++){const cx=(Math.random()-.5)*WORLD,cz=(Math.random()-.5)*WORLD,cy=900+Math.random()*700;
-    for(let j=0;j<6;j++){const s=new THREE.Sprite(cm);const sz=180+Math.random()*260;s.scale.set(sz,sz*.6,1);s.position.set(cx+(Math.random()-.5)*400,cy+Math.random()*80,cz+(Math.random()-.5)*300);clouds.add(s);}}
+    for(let j=0;j<9;j++){const s=new THREE.Sprite(j<3?cmD:cm);const sz=180+Math.random()*260;s.scale.set(sz,sz*.6,1);s.position.set(cx+(Math.random()-.5)*400,cy+(j<3?-30:Math.random()*90),cz+(Math.random()-.5)*300);clouds.add(s);}}
   scene.add(clouds);out.clouds=clouds;out.terrain=terrain;
   return out;
 }
